@@ -3562,6 +3562,8 @@ CPartFile::CPartFile(const CEC_PartFile_Tag *tag) : CKnownFile(tag)
 {
 	Init();
 
+    m_firstTooLong = 0;
+
 	SetFileName(CPath(tag->FileName()));
 	m_abyFileHash = tag->FileHash();
 	SetFileSize(tag->SizeFull());

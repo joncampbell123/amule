@@ -437,6 +437,10 @@ void CDownloadQueue::Process()
 
 		bool mustPreventSleep = false;
 
+        bool enableCulling = true;
+        if (thePrefs::GetMaxDownload() != UNLIMITED) /* cull >= 1-day downloads if total downloading is 80% or more of max */
+            enableCulling = theStats::GetDownloadRate()/*bytes/sec*/ >= ((thePrefs::GetMaxDownload()/*KB/sec*/ * 1024l * 4l) / 5l);
+
 		for ( uint16 i = 0; i < m_filelist.size(); i++ ) {
 			CPartFile* file = m_filelist[i];
 
@@ -444,6 +448,51 @@ void CDownloadQueue::Process()
 
 			uint8 status = file->GetStatus();
 			mustPreventSleep |= !(status == PS_ERROR || status == PS_INSUFFICIENT || status == PS_PAUSED || status == PS_COMPLETE);
+
+            static const unsigned int oneDay = 24u*60u*60u;
+            static const unsigned int twoDay = 24u*60u*60u*2u;
+            static const unsigned int threeDay = 24u*60u*60u*3u;
+
+            static const unsigned int regainConfidencePeriod = 60u*2;
+            static const unsigned int oneDayPatience = 60u*5u;
+            static const unsigned int twoDayPatience = 60u*2u;
+            static const unsigned int threeDayPatience = 30u;
+
+            uint64 nowms = theStats::GetUptimeMillis() / 1000ull;
+            sint32 rem = file->getTimeRemaining();
+
+            /* damn it... */
+            if ((sint64)nowms < 0ll) nowms = 0;
+
+            // automatically cull files that take too long to download.
+            // only do this IF the download bandwidth total is 90% the maximum configured
+            if (rem > 0l && (uint32)rem >= oneDay && file->GetTransferingSrcCount() > 0) {
+                if (file->m_firstTooLong == 0) {
+                    AddLogLineNS(CFormat(_("'%s' marked to watch if it will take too long (%ld)")) % file->GetFullName().GetPrintable() % (signed long)rem);
+                    file->m_firstTooLong = nowms;
+                }
+
+                if (enableCulling) {
+                    if ((uint32)rem >= threeDay && nowms > (file->m_firstTooLong + threeDayPatience)) {
+                        AddLogLineNS(CFormat(_("'%s' will take too long, 3-day (%ld)")) % file->GetFullName().GetPrintable() % (signed long)rem);
+                        CoreNotify_PartFile_Pause( file );
+                    }
+                    else if ((uint32)rem >= twoDay && nowms > (file->m_firstTooLong + twoDayPatience)) {
+                        AddLogLineNS(CFormat(_("'%s' will take too long, 2-day (%ld)")) % file->GetFullName().GetPrintable() % (signed long)rem);
+                        CoreNotify_PartFile_Pause( file );
+                    }
+                    else if ((uint32)rem >= oneDay && nowms > (file->m_firstTooLong + oneDayPatience)) {
+                        AddLogLineNS(CFormat(_("'%s' will take too long, 1-day (%ld)")) % file->GetFullName().GetPrintable() % (signed long)rem);
+                        CoreNotify_PartFile_Pause( file );
+                    }
+                }
+            }
+            else {
+                if (file->m_firstTooLong > 0 && (file->GetTransferingSrcCount() == 0 || nowms > (file->m_firstTooLong + regainConfidencePeriod) || status == PS_PAUSED)) {
+                    AddLogLineNS(CFormat(_("'%s' no longer marked to watch if it will take too long (%ld)")) % file->GetFullName().GetPrintable() % (signed long)rem);
+                    file->m_firstTooLong = 0;
+                }
+            }
 
 			if (status == PS_READY || status == PS_EMPTY ){
 				cur_datarate += file->Process( downspeed, cur_udcounter );

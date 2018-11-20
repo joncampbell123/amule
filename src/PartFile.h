@@ -419,6 +419,9 @@ public:
   // Read data for sharing
 	bool ReadData(class CFileArea & area, uint64 offset, uint32 toread);
 
+    /* Custom */
+    uint64  m_firstTooLong;
+
 private:
 	/* downloading sources list */
 	CClientRefList m_downloadingSourcesList;
