@@ -481,7 +481,7 @@ void CDownloadQueue::Process()
             }
 
             if (iter != speeds.rend())
-                minBw = *iter * 0.5;
+                minBw = *iter * 0.3;
         }
 
         {
@@ -546,7 +546,7 @@ void CDownloadQueue::Process()
                     }
                 }
                 if (enableBwCulling) {
-                    if (spd < minBw && nowms > (file->m_firstTooLong + bandwidthPatience)) {
+                    if ((uint32)rem >= (oneDay / 2u) && spd < minBw && nowms > (file->m_firstTooLong + bandwidthPatience)) {
                         AddLogLineNS(CFormat(_("'%s' is going too slow (%.3fkbps)")) % file->GetFullName().GetPrintable() % (float)spd);
                         CoreNotify_PartFile_Pause( file );
                     }
