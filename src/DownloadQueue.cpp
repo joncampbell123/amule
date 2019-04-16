@@ -447,7 +447,7 @@ void CDownloadQueue::Process()
         static unsigned int oneDay = 24u*60u*60u;
         static unsigned int twoDay = 24u*60u*60u*2u;
         static unsigned int threeDay = 24u*60u*60u*3u;
-        static float minBw = 4.0;
+        static float minBw = 10.0;
 
         std::vector<float> speeds;
         std::vector<sint32> remaintimes;
@@ -481,7 +481,7 @@ void CDownloadQueue::Process()
             }
 
             if (iter != speeds.rend())
-                minBw = *iter * 0.3;
+                minBw = std::min((double)((*iter) * 0.5),(double)minBw);
         }
 
         {
