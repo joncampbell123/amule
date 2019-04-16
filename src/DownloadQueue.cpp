@@ -480,8 +480,10 @@ void CDownloadQueue::Process()
                 iter = niter;
             }
 
-            if (iter != speeds.rend())
-                minBw = std::min((double)((*iter) * 0.5),(double)minBw);
+            if (iter != speeds.rend()) {
+                /* the more simultaneous downloads at the same time, the stingier we should become */
+                minBw = (*iter) * 1.001 * (1.0 - (1.0 / (speeds.size() + 1)));
+            }
         }
 
         {
