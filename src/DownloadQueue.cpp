@@ -438,8 +438,11 @@ void CDownloadQueue::Process()
 		bool mustPreventSleep = false;
 
         bool enableCulling = true;
-        if (thePrefs::GetMaxDownload() != UNLIMITED) /* cull >= 1-day downloads if total downloading is 80% or more of max */
+        bool enableBwCulling = true;
+        if (thePrefs::GetMaxDownload() != UNLIMITED) /* cull >= 1-day downloads if total downloading is 80% or more of max */ {
             enableCulling = theStats::GetDownloadRate()/*bytes/sec*/ >= ((thePrefs::GetMaxDownload()/*KB/sec*/ * 1024l * 4l) / 5l);
+            enableBwCulling = theStats::GetDownloadRate()/*bytes/sec*/ >= ((thePrefs::GetMaxDownload()/*KB/sec*/ * 1024l * 96l) / 100l);
+        }
 
         static unsigned int oneDay = 24u*60u*60u;
         static unsigned int twoDay = 24u*60u*60u*2u;
@@ -541,7 +544,9 @@ void CDownloadQueue::Process()
                         AddLogLineNS(CFormat(_("'%s' will take too long, 1-day (%ld)")) % file->GetFullName().GetPrintable() % (signed long)rem);
                         CoreNotify_PartFile_Pause( file );
                     }
-                    else if (spd < minBw && nowms > (file->m_firstTooLong + bandwidthPatience)) {
+                }
+                if (enableBwCulling) {
+                    if (spd < minBw && nowms > (file->m_firstTooLong + bandwidthPatience)) {
                         AddLogLineNS(CFormat(_("'%s' is going too slow (%.3fkbps)")) % file->GetFullName().GetPrintable() % (float)spd);
                         CoreNotify_PartFile_Pause( file );
                     }
