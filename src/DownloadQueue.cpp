@@ -441,6 +441,64 @@ void CDownloadQueue::Process()
         if (thePrefs::GetMaxDownload() != UNLIMITED) /* cull >= 1-day downloads if total downloading is 80% or more of max */
             enableCulling = theStats::GetDownloadRate()/*bytes/sec*/ >= ((thePrefs::GetMaxDownload()/*KB/sec*/ * 1024l * 4l) / 5l);
 
+        static unsigned int oneDay = 24u*60u*60u;
+        static unsigned int twoDay = 24u*60u*60u*2u;
+        static unsigned int threeDay = 24u*60u*60u*3u;
+        static float minBw = 4.0;
+
+        std::vector<float> speeds;
+        std::vector<sint32> remaintimes;
+
+		for ( uint16 i = 0; i < m_filelist.size(); i++ ) {
+			CPartFile* file = m_filelist[i];
+
+			CMutexUnlocker unlocker(m_mutex);
+
+			uint8 status = file->GetStatus();
+
+            if (status == PS_READY || status == PS_EMPTY) {
+                sint32 rem = file->getTimeRemaining();
+                float spd = file->GetKBpsDown();
+
+                if (spd > 0.1) speeds.push_back(spd);
+                if (rem > 15) remaintimes.push_back(rem);
+            }
+        }
+
+        std::sort(speeds.begin(),     speeds.end());
+        std::sort(remaintimes.begin(),remaintimes.end());
+
+        if (!speeds.empty()) {
+            std::vector<float>::reverse_iterator iter = speeds.rbegin();
+            for (unsigned int i=0;i < 3;i++) {
+                if (iter == speeds.rend()) break;
+                std::vector<float>::reverse_iterator niter = iter; niter++;
+                if (niter == speeds.rend()) break;
+                iter = niter;
+            }
+
+            if (iter != speeds.rend())
+                minBw = *iter * 0.5;
+        }
+
+        {
+            std::vector<sint32>::reverse_iterator iter = remaintimes.rbegin();
+            for (unsigned int i=0;i < 3;i++) {
+                if (iter == remaintimes.rend()) break;
+                std::vector<sint32>::reverse_iterator niter = iter; niter++;
+                if (niter == remaintimes.rend()) break;
+                iter = niter;
+            }
+
+            if (iter != remaintimes.rend()) {
+                oneDay = (unsigned int)(*iter) * 2u;
+                twoDay = std::max(twoDay,oneDay * 2u);
+                threeDay = std::max(threeDay,oneDay * 3u);
+            }
+        }
+
+//        AddLogLineNS(CFormat(_("oneDay=%ld minBw=%.3f")) % (signed long)oneDay % (float)minBw);
+
 		for ( uint16 i = 0; i < m_filelist.size(); i++ ) {
 			CPartFile* file = m_filelist[i];
 
@@ -449,24 +507,22 @@ void CDownloadQueue::Process()
 			uint8 status = file->GetStatus();
 			mustPreventSleep |= !(status == PS_ERROR || status == PS_INSUFFICIENT || status == PS_PAUSED || status == PS_COMPLETE);
 
-            static const unsigned int oneDay = 24u*60u*60u;
-            static const unsigned int twoDay = 24u*60u*60u*2u;
-            static const unsigned int threeDay = 24u*60u*60u*3u;
-
             static const unsigned int regainConfidencePeriod = 60u*2;
             static const unsigned int oneDayPatience = 60u*5u;
             static const unsigned int twoDayPatience = 60u*2u;
             static const unsigned int threeDayPatience = 30u;
+            static const unsigned int bandwidthPatience = 60u;
 
             uint64 nowms = theStats::GetUptimeMillis() / 1000ull;
             sint32 rem = file->getTimeRemaining();
+            float spd = file->GetKBpsDown();
 
             /* damn it... */
             if ((sint64)nowms < 0ll) nowms = 0;
 
             // automatically cull files that take too long to download.
             // only do this IF the download bandwidth total is 90% the maximum configured
-            if (rem > 0l && (uint32)rem >= oneDay && file->GetTransferingSrcCount() > 0) {
+            if (rem > 0l && ((uint32)rem >= oneDay || spd < minBw) && file->GetTransferingSrcCount() > 0) {
                 if (file->m_firstTooLong == 0) {
                     AddLogLineNS(CFormat(_("'%s' marked to watch if it will take too long (%ld)")) % file->GetFullName().GetPrintable() % (signed long)rem);
                     file->m_firstTooLong = nowms;
@@ -483,6 +539,10 @@ void CDownloadQueue::Process()
                     }
                     else if ((uint32)rem >= oneDay && nowms > (file->m_firstTooLong + oneDayPatience)) {
                         AddLogLineNS(CFormat(_("'%s' will take too long, 1-day (%ld)")) % file->GetFullName().GetPrintable() % (signed long)rem);
+                        CoreNotify_PartFile_Pause( file );
+                    }
+                    else if (spd < minBw && nowms > (file->m_firstTooLong + bandwidthPatience)) {
+                        AddLogLineNS(CFormat(_("'%s' is going too slow (%.3fkbps)")) % file->GetFullName().GetPrintable() % (float)spd);
                         CoreNotify_PartFile_Pause( file );
                     }
                 }
