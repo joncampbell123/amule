@@ -437,11 +437,63 @@ void CDownloadQueue::Process()
 
 		bool mustPreventSleep = false;
 
+        bool enableResume = false;
         bool enableCulling = true;
         bool enableBwCulling = true;
         if (thePrefs::GetMaxDownload() != UNLIMITED) /* cull >= 1-day downloads if total downloading is 80% or more of max */ {
             enableCulling = theStats::GetDownloadRate()/*bytes/sec*/ >= ((thePrefs::GetMaxDownload()/*KB/sec*/ * 1024l * 4l) / 5l);
             enableBwCulling = theStats::GetDownloadRate()/*bytes/sec*/ >= ((thePrefs::GetMaxDownload()/*KB/sec*/ * 1024l * 96l) / 100l);
+            enableResume = theStats::GetDownloadRate()/*bytes/sec*/ <= ((thePrefs::GetMaxDownload()/*KB/sec*/ * 1024l * 3l) / 5l);
+        }
+
+        static uint64_t next_resume = 0;
+
+        if (enableResume) {
+            uint64 nowms = theStats::GetUptimeMillis() / 1000ull;
+            if (next_resume <= nowms) {
+                bool done = false;
+
+                /* pick one item that is paused, and resume it */
+                if (!done) {
+                    for ( uint16 i = 0; i < m_filelist.size(); i++ ) {
+                        CPartFile* file = m_filelist[i];
+
+                        CMutexUnlocker unlocker(m_mutex);
+
+                        uint8 status = file->GetStatus();
+
+                        if (status == PS_PAUSED) {
+                            AddLogLineNS(_("Auto resuming paused item"));
+                            file->ResumeFile();
+                            done = true;
+                            break;
+                        }
+                    }
+                }
+
+                /* pick one item that is stopped, and resume it */
+                if (!done) {
+                    for ( uint16 i = 0; i < m_filelist.size(); i++ ) {
+                        CPartFile* file = m_filelist[i];
+
+                        CMutexUnlocker unlocker(m_mutex);
+
+                        uint8 status = file->GetStatus();
+
+                        if (status != PS_COMPLETE && file->IsStopped()) {
+                            AddLogLineNS(_("Auto resuming stopped item"));
+                            file->ResumeFile();
+                            done = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (done)
+                    next_resume = nowms + 15;
+                else
+                    next_resume = nowms + 10;
+            }
         }
 
         static unsigned int oneDay = 24u*60u*60u;
