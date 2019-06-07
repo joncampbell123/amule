@@ -451,7 +451,8 @@ void CDownloadQueue::Process()
         if (enableResume) {
             uint64 nowms = theStats::GetUptimeMillis() / 1000ull;
             if (next_resume <= nowms) {
-                bool done = false;
+                unsigned int done_thr = 10;
+                unsigned int done = 0;
 
                 /* pick one item that is paused, and resume it */
                 if (!done) {
@@ -465,8 +466,9 @@ void CDownloadQueue::Process()
                         if (status == PS_PAUSED) {
                             AddLogLineNS(_("Auto resuming paused item"));
                             file->ResumeFile();
-                            done = true;
-                            break;
+
+                            done++;
+                            if (done >= done_thr) break;
                         }
                     }
                 }
@@ -483,14 +485,15 @@ void CDownloadQueue::Process()
                         if (status != PS_COMPLETE && file->IsStopped()) {
                             AddLogLineNS(_("Auto resuming stopped item"));
                             file->ResumeFile();
-                            done = true;
-                            break;
+
+                            done++;
+                            if (done >= done_thr) break;
                         }
                     }
                 }
 
-                if (done)
-                    next_resume = nowms + 4;
+                if (done > 0)
+                    next_resume = nowms + 5;
                 else
                     next_resume = nowms + 3;
             }
