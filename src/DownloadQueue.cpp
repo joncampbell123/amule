@@ -490,9 +490,9 @@ void CDownloadQueue::Process()
                 }
 
                 if (done)
-                    next_resume = nowms + 15;
+                    next_resume = nowms + 4;
                 else
-                    next_resume = nowms + 10;
+                    next_resume = nowms + 3;
             }
         }
 
