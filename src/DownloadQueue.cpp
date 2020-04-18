@@ -582,7 +582,7 @@ void CDownloadQueue::Process()
 
             // automatically cull files that take too long to download.
             // only do this IF the download bandwidth total is 90% the maximum configured
-            if (rem > 0l && ((uint32)rem >= oneDay || spd < minBw) && file->GetTransferingSrcCount() > 0) {
+            if (rem > 0l && !(status == PS_COMPLETE || status == PS_COMPLETING) && ((uint32)rem >= oneDay || spd < minBw) && file->GetTransferingSrcCount() > 0) {
                 if (file->m_firstTooLong == 0) {
                     AddLogLineNS(CFormat(_("'%s' marked to watch if it will take too long (%ld)")) % file->GetFullName().GetPrintable() % (signed long)rem);
                     file->m_firstTooLong = nowms;
